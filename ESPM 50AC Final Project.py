@@ -21,15 +21,15 @@ import pandas as pd
 import geopandas as gpd
 import folium
 # import contextily as ctx
-"""
 import geoplot.crs as gcrs
 import cartopy.crs as ccrs
 import cartopy
 import geoplot as gplt
-"""
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+# from mpl_toolkits.axes_grid1 import make_axes_locatable
 from folium.plugins import MarkerCluster, HeatMap
+
 get_ipython().run_line_magic('matplotlib', 'inline')
 get_ipython().run_line_magic('config', "InlineBackend.figure_format = 'retina'")
 plt.style.use("seaborn")
@@ -196,9 +196,9 @@ state_data_2017_plot.set_ylabel(r"GHG Emissions ($10^8$)", fontsize = 20)
 plt.plot()
 
 
-# However, when we look into GHG emissions per capita in the United States in 2017, we can see that states such as California, Texas, and Indiana appear to be some of the smallest contributors to climate change with states like Wyoming, North Dakota, West Virginia, and Louisiana.
+# However, when we look into GHG emissions per capita in the United States in 2017, we can see that states such as California, Texas, and Indiana appear to be some of the smallest contributors to climate change with states like Wyoming, North Dakota, West Virginia, and Louisiana contributing the most to climate change when considering their population.
 
-# In[56]:
+# In[14]:
 
 
 import string
@@ -217,10 +217,167 @@ joined_table_plot.set_title("GHG Emissions Per Capita In 2017", fontsize = 20)
 plt.plot()
 
 
-# In[14]:
+# # Spatial Distribution of GHG Emissions
+# 
+# Below, we are going to illustrate the spatial distribution of GHG emissions within the United States. This is just done by taking the 2017 data we had above, turning it into a GeoDataFrame to get points that we can graph onto a US map visualization using Cartopy. As one can see, most of the facilities that promulgate GHG pollutants are located near the Gulf of Mexico and the Northeast. Incidentally, many Hispanic communities are located near this area such as in Texas, Mexico, Puerto Rico, etc.
+
+# In[15]:
 
 
+# define Albers Equal Area projection for contiguous US in cartopy format
+proj_aea_contig_us = ccrs.AlbersEqualArea(central_longitude=-96.0,
+                                          central_latitude=37.5,
+                                          standard_parallels=(29.5, 45.5))
+
+# define Albers Equal Area projection for contiguous US in proj4 format
 crs_aea_contig_us = "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
-data_formatted_gdf = gpd.GeoDataFrame(data_formatted, crs = crs_aea_contig_us, geometry = gpd.points_from_xy(data_formatted['LATITUDE'], data_formatted['LONGITUDE']))
-data_formatted_gdf
+
+
+# In[16]:
+
+
+# convert pandas dataframe to geopandas geodataframe
+data_2017_gpdf = gpd.GeoDataFrame(data_2017, crs=crs_aea_contig_us,
+                                     geometry=gpd.points_from_xy(data_2017.LONGITUDE, data_2017.LATITUDE))
+
+
+# In[17]:
+
+
+fig, ax = plt.subplots(figsize=(16,6), ncols=2, subplot_kw={'projection': proj_aea_contig_us})
+
+data_2017.plot.scatter("LONGITUDE", "LATITUDE", ax=ax[0], transform=ccrs.PlateCarree(),
+                           c="firebrick", s=10, edgecolor="w")
+for i in range(1):
+    ax[i].set_extent([-123, -72, 20, 52])
+    ax[i].stock_img()
+    ax[i].coastlines()
+    ax[i].add_feature(cartopy.feature.BORDERS)
+    ax[i].add_feature(cartopy.feature.STATES)
+
+ax[0].set_title("Distribution of the Facilities")
+
+
+# Although the United States has been one of the leading nations when discussing GHG emissions, it looks like while we are still emitting close to 3 gigatons of GHG, we are slowly making progress to reducing our GHG emissions through policy, adaptation, and mitigation; however, while one may think this, our forecase predictions as illustrated later in this notebook say otherwise. This is just another way of visualizating the progression of GHG emissions within the 2010 to 2019 period.
+
+# In[52]:
+
+
+year_breakdown_ghg = year_breakdown[['GHG_QUANTITY']]
+years = []
+for year in data_formatted['YEAR']:
+    if year not in years:
+        years.append(year)
+year_breakdown_ghg
+years = sorted(years)
+year_ghg_dict = {'YEAR': years, "GHG_QUANTITY": year_breakdown_ghg['GHG_QUANTITY'].tolist()}
+year_breakdown_ghg = pd.DataFrame(data = year_ghg_dict)
+year_breakdown_ghg_line = year_breakdown_ghg.plot.line(x = 'YEAR', y='GHG_QUANTITY', legend = False, figsize = (20, 20), fontsize = 18)
+year_breakdown_ghg_line.set_xlabel('Year', fontsize = 20)
+year_breakdown_ghg_line.set_ylabel('GHG Emissions (Gigatons)', fontsize = 20)
+year_breakdown_ghg_line.set_title("Progression of GHG Emissions (2010-2019)", fontsize = 20)
+
+
+# # Forecasting GHG Emissions
+# 
+# It is now time to use forecasting models such as the Autoregressive Integrated Moving Average (ARIMA) time series model to forecast GHG emissions in the future. In order to get a better picture and accuracy with this model, I am using a new dataset which contains U.S data from 1973 to 2016. This gives us more data to work with. The dataset can be found here: [Carbon Emissions Dataset](www.kaggle.com/txtrouble/carbon-emissions/data). Below, we are just loading in the data and doing some manipulation to make sure that our data is formatted properly.
+
+# In[37]:
+
+
+carbon_emissions_df = pd.read_csv("MER_T12_06.csv")
+carbon_emissions_df
+
+
+# In[40]:
+
+
+carbon_emissions_df_yy = []
+for items in carbon_emissions_df['YYYYMM']:
+    carbon_emissions_df_yy.append(int(str(items)[:4]))
+carbon_emissions_df_formatted = carbon_emissions_df[['YYYYMM', 'Value']]
+carbon_emissions_df_formatted['YYYYMM'] = carbon_emissions_df_yy
+carbon_emissions_df_formatted.rename(columns={'YYYYMM': 'Year'}, inplace = True)
+values_float = []
+for values in carbon_emissions_df_formatted['Value']:
+    values_float.append(float(values))
+carbon_emissions_df_formatted['Value'] = values_float
+carbon_emissions_df_formatted
+
+
+# In[43]:
+
+
+carbon_emissions_by_year_df = carbon_emissions_df_formatted.groupby('Year').aggregate(np.sum)
+carbon_emissions_by_year_df
+new_data_years = []
+for year in carbon_emissions_df_formatted['Year']:
+    if year not in new_data_years:
+        new_data_years.append(year)
+new_data_years = sorted(new_data_years)
+new_data_ghg_dict = {'Year': new_data_years, "Value": carbon_emissions_by_year_df['Value'].tolist()}
+new_year_breakdown_df = pd.DataFrame(data = new_data_ghg_dict)
+new_year_breakdown_df
+
+
+# Below, we are using the Autoregressive Integrated Moving Average (ARIMA) time series model to forecast GHG emissions in the future. We see that while we will continue to decrease our GHG emissions for a short period, they will continue to grow substantially. While 9 Gigatons is an overestimate of GHG emissions, it is on par with other estimations if we continue to consume as we have been 
+
+# In[58]:
+
+
+from statsmodels.tsa.arima_model import ARIMA
+train = new_year_breakdown_df.iloc[0:30]
+test = new_year_breakdown_df.iloc[30:]
+model = ARIMA(train['Value'], order=(1,0,0))
+model = model.fit()
+model.summary()
+future_year_index = pd.date_range(start='2017', end='2050', freq = 'Y')
+pred = model.predict(start = 0, end = 32)
+pred.index = future_year_index
+pred_line_plot = pred.plot(figsize=(20, 20), fontsize = 18)
+pred_line_plot.set_xlabel('Year', fontsize = 20)
+pred_line_plot.set_ylabel('GHG Emissions (Million Metric Tons)', fontsize = 20)
+pred_line_plot.set_title('GHG Emissions Time Series Forecast Till 2050', fontsize = 20)
+
+
+# Here, we are compiling data from Texas to prepare to make forecasting predications about GHG emissions within Texas.
+
+# In[70]:
+
+
+texas_data = data_formatted[data_formatted['STATE'] == 'TX']
+texas_data_grouped['GHG_QUANTITY'] = texas_data.groupby('YEAR').aggregate(np.sum)['GHG_QUANTITY']
+texas_data_year_dict = {'YEAR': [year for year in range(2010, 2020)], 'GHG_QUANTITY': texas_data_grouped['GHG_QUANTITY'].tolist()}
+texas_data_by_year = pd.DataFrame(data=texas_data_year_dict)
+texas_data_by_year
+
+
+# Below, we are using the Autoregressive Integrated Moving Average (ARIMA) time series model to forecast GHG emissions in the future. We see that Texas GHG emissions will increase but will plateau. Although the GHG emissions are forecasted to plateau, this is still concerning for Hispanics 
+
+# In[73]:
+
+
+train = texas_data_by_year.iloc[0:7]
+test = new_year_breakdown_df.iloc[7:]
+model = ARIMA(train['GHG_QUANTITY'], order=(1,0,0))
+model = model.fit()
+model.summary()
+future_year_index = pd.date_range(start='2020', end='2050', freq = 'Y')
+pred = model.predict(start = 0, end = 29)
+pred.index = future_year_index
+pred_line_plot = pred.plot(figsize=(20, 20), fontsize = 18)
+pred_line_plot.set_xlabel('Year', fontsize = 20)
+pred_line_plot.set_ylabel('GHG Emissions (Million Metric Tons)', fontsize = 20)
+pred_line_plot.set_title('GHG Emissions Time Series Forecast Till 2050 In Texas', fontsize = 20)
+
+
+# # Conclusion
+# 
+# Through data analysis, we were able to conclude that while GHG emissions have been declining these past 10 years, maintaining our current consumption patterns and policies will inevitably cause GHG emissions to grow substantially.
+# We were able to visualize the spatial distribution of GHG emissions and determine that most of the facilities that promulgate GHG pollutants are located near the Gulf of Mexico and the Northeast. Incidentally, many Hispanic communities are located near this area such as in Texas, Mexico, Puerto Rico, etc. This helped us begin to analyze how climate change has affected Hispanic communities. We found that according to the Environmental Defense Fund (EDF), “Climate change has a tremendous impact on the health, livelihoods, and overall well-being of U.S. Latinos ... More than half (55%) of Latino-Americans live in three states that are already experiencing serious effects related to climate change”. Some further research allowed us to notice  that Puerto Rico's climate change problems are largely synonymous to New Orleans and that higher Hispanic poverty levels and lower rates of health insurance mean that Hispanic communities are more prone to climate change effects. Through the United States Census Bureau's forecasting model along with our own, we saw that the Hispanic population within the United States is expected to grow to up to 100 million along the prediction that Texas GHG emissions will increase and plateau, but this is still concerning for Hispanics. In summation, policy, community outreach, adaptation, and mitigation strategies should continue to be adopted to help protect marginalized populations such as African Americans and Hispanics from the adverse effects of climate change
+
+# In[ ]:
+
+
+
 
